@@ -1,0 +1,30 @@
+# Credentials (keep secrets out of git)
+ESP32-Firmware/include/credentials.h
+server/.env
+
+# PlatformIO build files
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Temp files
+*.tmp
+*.temp
+*.wav
+
+# OS
+.DS_Store
+Thumbs.db
