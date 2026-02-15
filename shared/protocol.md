@@ -5,11 +5,13 @@ This document defines the message formats used between components.
 ## Overview
 
 ```
-ESP32-A ──┐                    ┌──► Arduino-A (8 boxes)
-          ├──(WiFi/HTTP)──► Flask Server
-ESP32-B ──┘                    └──► Arduino-B (8 boxes)
-                                      
-Both Arduinos show identical 8-box display with data from both ESP32s.
+ESP32 ──(HTTP POST)──► Flask Server ◄──(PC Mic PTT)
+                            │
+                            ▼
+                      [Process/Shrink]
+                            │
+                            ▼
+                  Arduino Uno (USB Serial)
 ```
 
 ## ESP32 → Server (HTTP JSON)
@@ -25,40 +27,22 @@ Send sensor readings from ESP32 to PC server.
 **Request Body**:
 ```json
 {
-  "device": "A",
   "temp": 23.7,
   "humidity": 41,
   "moisture": 78
 }
 ```
 
-- `device`: Required. Either `"A"` or `"B"` to identify the ESP32.
-- All sensor fields are optional - send only what changed or all at once.
+All fields are optional - send only what changed or all at once.
 
 **Response**:
 ```json
 {
   "status": "ok",
-  "device": "A",
   "sent": {
-    "temp": {"Arduino-A": true, "Arduino-B": true},
-    "humidity": {"Arduino-A": true, "Arduino-B": true},
-    "moisture": {"Arduino-A": true, "Arduino-B": true}
-  }
-}
-```
-
-### GET /status
-
-View current sensor values from all devices.
-
-**Response**:
-```json
-{
-  "status": "ok",
-  "devices": {
-    "A": {"temp": 23.7, "humidity": 41, "moisture": 78},
-    "B": {"temp": 25.1, "humidity": 55, "moisture": 62}
+    "temp": true,
+    "humidity": true,
+    "moisture": true
   }
 }
 ```
@@ -72,106 +56,71 @@ Line-based protocol over USB serial at **115200 baud**.
 ### Message Format
 
 ```
-<CMD> <DEVICE> <PARAM> <VALUE>\n
+<CMD> <PARAM> <VALUE>\n
 ```
 
 ### Commands
 
 | Command | Format | Example | Description |
 |---------|--------|---------|-------------|
-| Temperature | `S <D> T <float>` | `S A T 23.7` | Update device A/B temperature |
-| Humidity | `S <D> H <int>` | `S B H 41` | Update device A/B humidity |
-| Moisture | `S <D> M <int>` | `S A M 78` | Update device A/B moisture |
-| Voice | `V <D> <text>` | `V A HELLO` | Update device A/B voice (max 12 chars) |
-
-Where `<D>` is the device ID: `A` or `B`
+| Temperature | `S T <float>` | `S T 23.7` | Update temperature box |
+| Humidity | `S H <int>` | `S H 41` | Update humidity box |
+| Moisture | `S M <int>` | `S M 78` | Update moisture box |
+| Voice | `V <text>` | `V LIGHTS ON` | Update voice box (max 20 chars) |
 
 ### Parsing Rules
 
 1. Read until newline (`\n`)
-2. Split to get command type, device ID, and parameters
-3. Update corresponding box on display
+2. Split on first space to get command
+3. Parse remaining based on command type
 
 **Arduino pseudo-code**:
 ```cpp
-if (line.startsWith("S ")) {
-    char device = line.charAt(2);  // 'A' or 'B'
-    char sensor = line.charAt(4);  // 'T', 'H', or 'M'
-    String value = line.substring(6);
-    
-    if (device == 'A') {
-        if (sensor == 'T') updateBox(BOX_A_TEMP, value);
-        else if (sensor == 'H') updateBox(BOX_A_HUMID, value);
-        else if (sensor == 'M') updateBox(BOX_A_MOIST, value);
-    }
-    else if (device == 'B') {
-        if (sensor == 'T') updateBox(BOX_B_TEMP, value);
-        // ... etc
-    }
-}
-else if (line.startsWith("V ")) {
-    char device = line.charAt(2);
-    String text = line.substring(4);
-    
-    if (device == 'A') updateBox(BOX_A_VOICE, text);
-    else if (device == 'B') updateBox(BOX_B_VOICE, text);
+if (Serial.available()) {
+  String line = Serial.readStringUntil('\n');
+  line.trim();
+  
+  if (line.startsWith("S T ")) {
+    float temp = line.substring(4).toFloat();
+    updateTempBox(temp);
+  }
+  else if (line.startsWith("S H ")) {
+    int hum = line.substring(4).toInt();
+    updateHumidBox(hum);
+  }
+  else if (line.startsWith("S M ")) {
+    int moist = line.substring(4).toInt();
+    updateMoistBox(moist);
+  }
+  else if (line.startsWith("V ")) {
+    String text = line.substring(2);
+    updateVoiceBox(text);
+  }
 }
 ```
 
 ---
 
-## LCD Layout (480x320, 8 boxes - 2x4 grid)
+## LCD Layout (480x320, 4 boxes)
 
 ```
-┌────────┬────────┬────────┬────────┐
-│ A:TEMP │ A:HUM  │ A:MOIST│ A:VOICE│
-│ 23.7°C │  41%   │   78   │ READY  │
-├────────┼────────┼────────┼────────┤
-│ B:TEMP │ B:HUM  │ B:MOIST│ B:VOICE│
-│ 25.1°C │  55%   │   62   │ READY  │
-└────────┴────────┴────────┴────────┘
+┌──────────────┬──────────────┐
+│     TEMP     │    HUMID     │
+│    23.7°C    │     41%      │
+├──────────────┼──────────────┤
+│    MOIST     │    VOICE     │
+│      78      │  LIGHTS ON   │
+└──────────────┴──────────────┘
 ```
 
 ### Box Coordinates (landscape mode)
 
-| Box | Index | X | Y | Width | Height |
-|-----|-------|---|---|-------|--------|
-| A:TEMP | 0 | 0 | 0 | 120 | 160 |
-| A:HUM | 1 | 120 | 0 | 120 | 160 |
-| A:MOIST | 2 | 240 | 0 | 120 | 160 |
-| A:VOICE | 3 | 360 | 0 | 120 | 160 |
-| B:TEMP | 4 | 0 | 160 | 120 | 160 |
-| B:HUM | 5 | 120 | 160 | 120 | 160 |
-| B:MOIST | 6 | 240 | 160 | 120 | 160 |
-| B:VOICE | 7 | 360 | 160 | 120 | 160 |
-
----
-
-## Multi-Device Setup
-
-### Hardware
-- **PC-1**: Powers both ESP32s (via USB or power supply), provides WiFi
-- **PC-2**: Runs Flask server, connects to both Arduinos via USB
-
-### Configuration
-
-**ESP32-A** (`temphumid.cpp`):
-```cpp
-const char* DEVICE_ID = "A";
-const char* SERVER_URL = "http://<PC-2_IP>:5000/sensor";
-```
-
-**ESP32-B** (`temphumid.cpp`):
-```cpp
-const char* DEVICE_ID = "B";
-const char* SERVER_URL = "http://<PC-2_IP>:5000/sensor";
-```
-
-**Flask** (`.env` on PC-2):
-```env
-ARDUINO_COM_PORT_A=COM9
-ARDUINO_COM_PORT_B=COM3
-```
+| Box | X | Y | Width | Height |
+|-----|---|---|-------|--------|
+| Temp (top-left) | 0 | 0 | 240 | 160 |
+| Humid (top-right) | 240 | 0 | 240 | 160 |
+| Moist (bottom-left) | 0 | 160 | 240 | 160 |
+| Voice (bottom-right) | 240 | 160 | 240 | 160 |
 
 ---
 
@@ -180,13 +129,13 @@ ARDUINO_COM_PORT_B=COM3
 Voice transcripts are processed before sending to Arduino:
 
 1. **Intent mapping**: Match known phrases to short codes
-   - "turn on the bedroom lights" → `BED LIT`
-   - "what's the temperature" → `CHK TMP`
+   - "turn on the bedroom lights" → `BED LIGHT ON`
+   - "what's the temperature" → `CHECK TEMP`
 
-2. **Keyword extraction**: Remove filler words, keep 1-2 keywords
-   - "could you please check the humidity level" → `CHK HUM`
+2. **Keyword extraction**: Remove filler words, keep 2-3 keywords
+   - "could you please check the humidity level" → `CHECK HUMIDITY`
 
-3. **Hard truncate**: Limit to 12 characters max (for 120px wide boxes)
+3. **Hard truncate**: Limit to 20 characters max
 
 See `server/shrink.py` for implementation.
 
@@ -197,14 +146,11 @@ See `server/shrink.py` for implementation.
 ### ESP32
 - Retry HTTP POST up to 3 times on failure
 - Continue sensor reads even if WiFi disconnected
-- Include device ID in all requests
 
 ### Server
 - Return 400 for malformed requests
 - Log serial errors but don't crash
-- Broadcast to all connected Arduinos
 
 ### Arduino
 - Ignore malformed serial messages
 - Keep displaying last valid data
-- Respond with "OK <D> <S>" or "ERR ..."

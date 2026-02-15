@@ -19,10 +19,7 @@ const char* WIFI_SSID = "Sharisse";
 const char* WIFI_PASSWORD = "panictime";
 
 // Server URL - UPDATE with your PC's IP address
-const char* SERVER_URL = "http://100.66.219.16:5000/sensor";
-
-// Device ID - SET TO "A" or "B" for each ESP32
-const char* DEVICE_ID = "B";
+const char* SERVER_URL = "http://172.20.10.3:5000/sensor";
 
 // Sensor pins
 const int DHT_PIN = 16;
@@ -73,9 +70,8 @@ bool sendSensorData(float temp, float humidity, int moisture) {
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(HTTP_TIMEOUT_MS);
     
-    // Build JSON payload with device ID
+    // Build JSON payload
     String json = "{";
-    json += "\"device\":\"" + String(DEVICE_ID) + "\",";
     json += "\"temp\":" + String(temp, 1) + ",";
     json += "\"humidity\":" + String((int)humidity) + ",";
     json += "\"moisture\":" + String(moisture);
@@ -111,8 +107,6 @@ void setup() {
     
     Serial.println("================================");
     Serial.println("ESP32 Sensor Hub Starting...");
-    Serial.print("Device ID: ");
-    Serial.println(DEVICE_ID);
     Serial.println("================================");
     
     // Initialize DHT sensor
