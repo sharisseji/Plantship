@@ -22,8 +22,8 @@ const char* WIFI_PASSWORD = "panictime";
 const char* SERVER_URL = "http://172.20.10.3:5000/sensor";
 
 // Sensor pins
-const int DHT_PIN = 16;
-const int MOISTURE_PIN = 15;
+const int DHT_PIN = 15;
+const int MOISTURE_PIN = 16;
 
 // Timing
 const unsigned long SEND_INTERVAL_MS = 2000;  // Send every 2 seconds
